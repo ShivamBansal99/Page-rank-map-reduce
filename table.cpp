@@ -15,8 +15,6 @@ const char *OUTPUT_ARG = "-o";
 double alpha =0.85; // the pagerank damping factor
 double convergence=0.000001;
 unsigned long max_iterations=10000;
-string delim=" ";
-bool numeric =true; // input graph has numeric, zero-based indexed vertices
 vector<size_t> num_outgoing; // number of outgoing links per column
 vector< vector<size_t> > rows; // the rowns of the hyperlink matrix
 vector<double> pr; // the pagerank table
@@ -28,11 +26,6 @@ void reset() {
     pr.clear();
 }
 	
-
-void reserve(size_t size) {
-    num_outgoing.reserve(size);
-    rows.reserve(size);
-}
 
 const void error(const char *p,const char *p2) {
     cerr << p <<  ' ' << p2 <<  '\n';
@@ -85,12 +78,6 @@ int read_file(const string &filename) {
 	}
     return 0;
 }
-
-
-
-
-
-
 
 void pagerank() {
 
@@ -172,20 +159,19 @@ void pagerank() {
 const void print_params(ostream& out) {
     out << "alpha = " << alpha << " convergence = " << convergence
         << " max_iterations = " << max_iterations
-        << " numeric = " << numeric
-        << " delimiter = '" << delim << "'" << endl;
+        << endl;
 }
 
-const void print_pagerank_v() {
+const void print_pagerank_v(ofstream& out) {
 
     size_t i;
     size_t num_rows = pr.size();
     double sum = 0;
     
-    cout.precision(numeric_limits<double>::digits10);
+    out.precision(numeric_limits<double>::digits10);
 
     for (i = 0; i < num_rows; i++) {
-		cout << i << " = " << pr[i] << endl;
+		out << i << " = " << pr[i] << endl;
         sum += pr[i];
     }
     cerr << "s = " << sum << " " << endl;
@@ -200,8 +186,8 @@ int check_inc(int i, int max) {
 
 int main(int argc, char **argv) {
 
-    string input = "stdin";
-	string output;
+    string input="";
+	string output="";
     int i = 1;
     while (i < argc) {
         if (!strcmp(argv[i], OUTPUT_ARG)) {
@@ -212,7 +198,10 @@ int main(int argc, char **argv) {
         }
         i++;
     }
-
+	if(output.empty() || input.empty()){
+		cerr<<"To run this file(assumed to be \"a\") use \n \t a <space> input_file <space> -o <space> output_file";
+		return 1;
+	}
     print_params(cerr);
     cerr << "Reading input from " << input << "..." << endl;
     if (!strcmp(input.c_str(), "stdin")) {
@@ -223,6 +212,10 @@ int main(int argc, char **argv) {
     cerr << "Calculating pagerank..." << endl;
     pagerank();
     cerr << "Done calculating!" << endl;
-    print_pagerank_v();
+	ofstream outfile(output); 
+	if (!outfile) {
+	  error("Cannot open file", output.c_str());
+	}
+    print_pagerank_v(outfile);
 }
 
