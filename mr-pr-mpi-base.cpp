@@ -16,7 +16,7 @@ using namespace std;
 const char *OUTPUT_ARG = "-o";
 
 double alpha =0.85; // the pagerank damping factor
-double convergence=0.000001;
+double convergence=0.00001;
 unsigned long max_iterations=10000;
 vector<size_t> num_outgoing; // number of outgoing links per column
 vector< vector<size_t> > rows; // the rowns of the hyperlink matrix
@@ -120,6 +120,14 @@ void myreduce(char *key, int keybytes, char *multivalue,
 	kv->add(key,keybytes,(char *)&h, sizeof(double));
 }
 
+void setval(char *key, int keybytes, char *multivalue,
+	  int nvalues, int *valuebytes, KeyValue *kv, void *ptr) {
+	// cerr<<"lol"<<endl;
+	// cerr<<"key+h "<<(*((size_t *)(key)))<<' '<<h<<endl;
+	pr[(*((size_t *)(key)))] = (*((double *)(multivalue)));
+}
+
+
 void pagerank() {
 
     vector<size_t>::iterator ci; // current incoming
@@ -197,7 +205,10 @@ void pagerank() {
 		mr->reduce(&myreduce,NULL);
 		
 		MPI_Barrier(MPI_COMM_WORLD);
-		
+		mr->gather(1);
+		mr->broadcast(0);
+		mr->convert();
+		mr->reduce(&setval,NULL);
 		
         for (i = 0; i < num_rows; i++) {
             //cerr<<pr[i];
@@ -256,26 +267,30 @@ int main(int argc, char **argv) {
         }
         i++;
     }
-	if(output.empty() || input.empty()){
-		cerr<<"To run this file(assumed to be \"a\") use \n \t a <space> input_file <space> -o <space> output_file";
-		MPI_Abort(MPI_COMM_WORLD,1);
-		return 1;
+	if(me==0){
+		if(output.empty() || input.empty()){
+			cerr<<"To run this file(assumed to be \"a\") use \n \t a <space> input_file <space> -o <space> output_file";
+			MPI_Abort(MPI_COMM_WORLD,1);
+			return 1;
+		}
+		print_params(cerr);
+		cerr << "Reading input from " << input << "..." << endl;
 	}
-    print_params(cerr);
-    cerr << "Reading input from " << input << "..." << endl;
     if (!strcmp(input.c_str(), "stdin")) {
             read_file("");
     } else {
         read_file(input);
     }
-    cerr << "Calculating pagerank..." << endl;
+    if(me==0) cerr << "Calculating pagerank..." << endl;
     pagerank();
-    cerr << "Done calculating!" << endl;
-	ofstream outfile(output); 
-	if (!outfile) {
-	  error("Cannot open file", output.c_str());
+	if(me==0){
+		cerr << "Done calculating!" << endl;
+		ofstream outfile(output); 
+		if (!outfile) {
+		  error("Cannot open file", output.c_str());
+		}
+		print_pagerank_v(outfile);
 	}
-    print_pagerank_v(outfile);
 	MPI_Finalize();
 }
 
