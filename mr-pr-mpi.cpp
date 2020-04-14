@@ -8,17 +8,20 @@
 #include <string>
 #include <cstring>
 #include <limits>
+#include "mapreducempi.h"
 using namespace std;
 
 const char *OUTPUT_ARG = "-o";
 
 double alpha =0.85; // the pagerank damping factor
 double convergence=0.000001;
-unsigned long max_iterations=10000;
+unsigned long max_iterations=100;
 vector<size_t> num_outgoing; // number of outgoing links per column
 vector< vector<size_t> > rows; // the rowns of the hyperlink matrix
+vector< vector<size_t> > columns; // the columns of the hyperlink matrix
 vector<double> pr; // the pagerank table
-
+vector<double> old_pr;
+int me,nprocs;
 
 void reset() {
     num_outgoing.clear();
@@ -51,12 +54,14 @@ bool add_arc(size_t from, size_t to) {
     if (rows.size() <= max_dim) {
         max_dim = max_dim + 1;
         rows.resize(max_dim);
+		columns.resize(max_dim);
         if (num_outgoing.size() <= max_dim) {
             num_outgoing.resize(max_dim);
         }
     }
 
     ret = insert_into_vector(rows[to], from);
+	insert_into_vector(columns[from], to);
 
     if (ret) {
         num_outgoing[from]++;
@@ -79,6 +84,47 @@ int read_file(const string &filename) {
     return 0;
 }
 
+
+
+void mymap(int itask, map<int,vector<double> > * map1)
+{
+	int num_rows=rows.size();
+	int step = num_rows/nprocs;
+	for (int m = (itask)*step; m <= (itask)*step + step && m<num_rows; m++) {
+		for(int j=0;j<columns[m].size();j++){
+			double val = (num_outgoing[m])
+				? (1.0*old_pr[m]) / (1.0*num_outgoing[m])
+				: 0.0;
+			// cerr<<num_outgoing[m]<<' '<<val<<endl;
+			// if(columns[m][j]>20000) cerr<<"errorssss"<<endl;
+			if(map1->find(columns[m][j]) == map1->end()){
+				vector<double> v;
+				(*map1)[columns[m][j]] =v;
+			}
+			(*map1)[columns[m][j]].push_back(val);	
+		}
+	}
+}
+
+void myreduce(int nvalues,int key, vector<double> vals,map<int,vector<double> > * map2) {
+	// cerr<<"lol"<<endl;
+	double h=0.0;
+	assert(nvalues==vals.size());
+	for (int i = 0; i <nvalues; i++) {
+		/* The current element of the H vector */
+		// cerr<<"here "<<(*((double *)(multivalue)))<<endl;
+		h += vals[i];
+	}
+	h*=alpha;
+	// cerr<<"key+h "<<(*((size_t *)(key)))<<' '<<h<<endl;
+	pr[key] = h;
+	if(map2->find(key) == map2->end()){
+		vector<double> v;
+		(*map2)[key] =v;
+	}
+	(*map2)[key].push_back(h);	
+}
+
 void pagerank() {
 
     vector<size_t>::iterator ci; // current incoming
@@ -88,7 +134,6 @@ void pagerank() {
     double dangling_pr; // sum of current pagerank vector elements for dangling
     			// nodes
     unsigned long num_iterations = 0;
-    vector<double> old_pr;
 
     size_t num_rows = rows.size();
     
@@ -137,19 +182,32 @@ void pagerank() {
 
         /* The difference to be checked for convergence */
         diff = 0;
+		
+	
+
+		for (i = 0; i < num_rows; i++) {
+			pr[i] = 0;
+		}
+		
+		mapreduce<int,double,int, double> *mr = new mapreduce<int,double,int, double>();
+		MPI_Barrier(MPI_COMM_WORLD);
+		
+		// cerr<<"here1 "<<nprocs<<endl;
+		mr->mapall(nprocs,me,&mymap);
+		// cerr<<"here2"<<endl;
+		// MPI_Barrier(MPI_COMM_WORLD);
+		mr->scatt(me,nprocs);
+		// cerr<<"here3"<<endl;
+		mr->reduce(nprocs,me,&myreduce);
+		// cerr<<"here4"<<endl;
+		
+		MPI_Barrier(MPI_COMM_WORLD);
+		
+		
         for (i = 0; i < num_rows; i++) {
-            /* The corresponding element of the H multiplication */
-            double h = 0.0;
-            for (ci = rows[i].begin(); ci != rows[i].end(); ci++) {
-                /* The current element of the H vector */
-                double h_v = (num_outgoing[*ci])
-                    ? 1.0 / num_outgoing[*ci]
-                    : 0.0;
-                h += h_v * old_pr[*ci];
-            }
-            h *= alpha;
-            pr[i] = h + one_Av + one_Iv;
-            diff += fabs(pr[i] - old_pr[i]);
+            //cerr<<pr[i];
+			pr[i] += one_Av + one_Iv;
+			diff += fabs(pr[i] - old_pr[i]);
         }
         num_iterations++;
     }
@@ -186,6 +244,11 @@ int check_inc(int i, int max) {
 
 int main(int argc, char **argv) {
 
+	MPI_Init(&argc,&argv);
+	MPI_Comm_rank(MPI_COMM_WORLD,&me);
+	MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+	cerr<<nprocs<<endl;
+
     string input="";
 	string output="";
     int i = 1;
@@ -200,6 +263,7 @@ int main(int argc, char **argv) {
     }
 	if(output.empty() || input.empty()){
 		cerr<<"To run this file(assumed to be \"a\") use \n \t a <space> input_file <space> -o <space> output_file";
+		MPI_Abort(MPI_COMM_WORLD,1);
 		return 1;
 	}
     print_params(cerr);
@@ -217,5 +281,6 @@ int main(int argc, char **argv) {
 	  error("Cannot open file", output.c_str());
 	}
     print_pagerank_v(outfile);
+	MPI_Finalize();
 }
 
