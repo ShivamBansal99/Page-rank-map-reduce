@@ -11,7 +11,7 @@ template<class keytype,class valtype,class key2type,class val2type>
 			void mapall(int nprocs,int me, void (*f)(int, map<keytype,vector<valtype> > *) );
 			void scatt(int me,int nprocs);
 			void reduce(int nprocs,int me, void (* f)(int,keytype, vector<valtype>, map<key2type,vector<val2type> > *) );
-			map<key2type, vector<val2type> > get_maps();
+			map<key2type, vector<val2type> > get_maps(int me,int nprocs);
 		private:
 				map<keytype,vector<valtype> > map1;
 		

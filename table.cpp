@@ -14,7 +14,7 @@ const char *OUTPUT_ARG = "-o";
 
 double alpha =0.85; // the pagerank damping factor
 double convergence=0.000001;
-unsigned long max_iterations=100;
+unsigned long max_iterations=5;
 vector<size_t> num_outgoing; // number of outgoing links per column
 vector< vector<size_t> > rows; // the rowns of the hyperlink matrix
 vector<double> pr; // the pagerank table

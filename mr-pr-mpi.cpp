@@ -15,7 +15,7 @@ const char *OUTPUT_ARG = "-o";
 
 double alpha =0.85; // the pagerank damping factor
 double convergence=0.000001;
-unsigned long max_iterations=100;
+unsigned long max_iterations=5;
 vector<size_t> num_outgoing; // number of outgoing links per column
 vector< vector<size_t> > rows; // the rowns of the hyperlink matrix
 vector< vector<size_t> > columns; // the columns of the hyperlink matrix
@@ -197,19 +197,19 @@ void pagerank() {
 		// cerr<<"here2"<<endl;
 		// MPI_Barrier(MPI_COMM_WORLD);
 		mr->scatt(me,nprocs);
-		// cerr<<"here3"<<endl;
 		mr->reduce(nprocs,me,&myreduce);
-		// cerr<<"here4"<<endl;
 		
 		MPI_Barrier(MPI_COMM_WORLD);
-		
-		
-        for (i = 0; i < num_rows; i++) {
-            //cerr<<pr[i];
+		map<int, vector<double> >mp = mr->get_maps(me,nprocs);
+        
+		for (i = 0; i < num_rows; i++) {
+			if(mp[i].size()>0)
+				pr[i]=mp[i][0];
 			pr[i] += one_Av + one_Iv;
 			diff += fabs(pr[i] - old_pr[i]);
         }
-        num_iterations++;
+        
+		num_iterations++;
     }
     
 }
@@ -244,43 +244,47 @@ int check_inc(int i, int max) {
 
 int main(int argc, char **argv) {
 
-	MPI_Init(&argc,&argv);
+	MPI_Init(NULL,NULL);
 	MPI_Comm_rank(MPI_COMM_WORLD,&me);
 	MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
-	cerr<<nprocs<<endl;
 
     string input="";
 	string output="";
-    int i = 1;
-    while (i < argc) {
-        if (!strcmp(argv[i], OUTPUT_ARG)) {
-            i = check_inc(i, argc);
-            output = argv[i];
-        } else{
-            input = argv[i];
-        }
-        i++;
-    }
-	if(output.empty() || input.empty()){
-		cerr<<"To run this file(assumed to be \"a\") use \n \t a <space> input_file <space> -o <space> output_file";
-		MPI_Abort(MPI_COMM_WORLD,1);
-		return 1;
+	int i = 1;
+	while (i < argc) {
+		if (!strcmp(argv[i], OUTPUT_ARG)) {
+			i = check_inc(i, argc);
+			output = argv[i];
+		} else{
+			input = argv[i];
+		}
+		i++;
 	}
-    print_params(cerr);
-    cerr << "Reading input from " << input << "..." << endl;
+    if(me==0){
+		cerr<<nprocs<<endl;
+		if(output.empty() || input.empty()){
+			cerr<<"To run this file(assumed to be \"a\") use \n \t a <space> input_file <space> -o <space> output_file";
+			MPI_Abort(MPI_COMM_WORLD,1);
+			return 1;
+		}
+		print_params(cerr);
+		cerr << "Reading input from " << input << "..." << endl;
+	}
     if (!strcmp(input.c_str(), "stdin")) {
             read_file("");
     } else {
         read_file(input);
     }
-    cerr << "Calculating pagerank..." << endl;
+    if(me==0) cerr << "Calculating pagerank..." << endl;
     pagerank();
-    cerr << "Done calculating!" << endl;
-	ofstream outfile(output); 
-	if (!outfile) {
-	  error("Cannot open file", output.c_str());
+    if(me==0){
+		cerr << "Done calculating!" << endl;
+		ofstream outfile(output);
+		if (!outfile) {
+		  error("Cannot open file", output.c_str());
+		}
+		print_pagerank_v(outfile);
 	}
-    print_pagerank_v(outfile);
 	MPI_Finalize();
 }
 
